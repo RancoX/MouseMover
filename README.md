@@ -1,5 +1,5 @@
 # MouseMover
-A simple mouse mover for dedicated wfh souls
+A simple mouse mover for dedicated wfh souls. 
 To use the script, make sure you have Python3 and pip installed
 
 - Set up environment and dependencies
