@@ -195,3 +195,4 @@ win=MyMainWindow()
 win.show()
 app.exec()
 
+# pyinstaller --noconsole "C:\Users\RancoXu\OneDrive - Argyle Capital Partners Pty Ltd\Desktop\Ranco\Python\AutoMouseMover\auto_mover.py" --paths "C:\Users\RancoXu\OneDrive - Argyle Capital Partners Pty Ltd\Desktop\Ranco\Python\AutoMouseMover" --add-data 'requirements.txt;.'
