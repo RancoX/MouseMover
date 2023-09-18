@@ -3,8 +3,9 @@ from datetime import datetime
 from time import sleep
 from random import randint,random
 from screeninfo import get_monitors
-from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QLabel, QSpinBox, QVBoxLayout, QHBoxLayout, QWidget, QComboBox
-from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QLabel, QSpinBox, QVBoxLayout, QHBoxLayout, QWidget, QComboBox, QMessageBox
+from PySide6.QtCore import Qt, QRunnable, QThreadPool
+from PySide6.QtGui import QAction
 import sys
 
 
@@ -21,44 +22,6 @@ now=datetime.now()
 # press key
 keys=["ctrl","shift","alt","space","tab","enter","esc","capslock","up","down","left","right","add","subtract","divide","multiply"]
 
-# =================================== main function ===================================
-def auto_cursor(stop_hr,stop_min,max_x,min_y,flag,now,key):
-    print(f'Beeeeeep...zzZZzzZZZzzz...It\'s {now.strftime(r"%A, %Y-%m-%d %H:%M:%S")}\nI\'m your pc scout, automobility initiated until {stop_hr}:{stop_min:02}:00')
-    # Get a list of all connected monitors
-    monitors = get_monitors()
-
-    for monitor in monitors:
-        # print(f"Monitor <{monitor.name}>: Width: {monitor.width} pixels, Height: {monitor.height} pixels")
-        max_x+=monitor.width
-        min_y=min(min_y,monitor.height)
-
-
-    while flag:
-        # generate the next x,y, moving time, sleep time
-        x=randint(0,max_x-1)
-        y=randint(0,min_y-1)
-        duration=round(2*random(),2)
-        sleeping_time=randint(2,120)
-
-        print(f"Now moving cursor to <{x},{y}> and then will sleep for {sleeping_time}s")
-        # move cursor
-        pg.moveTo(x,y,duration=duration)
-        if sleeping_time>90:
-            pg.press(key)
-            print(f"Key <{key}> has been pressed!")
-
-        # hold off
-        sleep(sleeping_time)
-
-        # check if time's up
-        now_hr, now_min = datetime.now().hour, datetime.now().minute
-        if now_hr > stop_hr:
-            flag=False
-        if now_hr == stop_hr:
-            if now_min >= stop_min:
-                flag=False
-
-    print(f"It's {stop_hr}:{stop_min:02}:00! No one's watching anymore...")
 
 # =================================== GUI ===================================
 class ZeroPaddedSpinBox(QSpinBox):
@@ -68,14 +31,74 @@ class ZeroPaddedSpinBox(QSpinBox):
     def textFromValue(self, value):
         # Customize the display format to add a leading zero if value < 10
         return f'{value:02}'
+
+# =================================== QThreadpool Worker ===================================
+class Mover(QRunnable):
+    def __init__(self,stop_hr,stop_min,max_x,min_y,flag,now,key):
+        super().__init__()
+        self.stop_hr=stop_hr
+        self.stop_min=stop_min
+        self.max_x=max_x
+        self.min_y=min_y
+        self.flag=flag
+        self.now=now
+        self.key=key
+
+    def run(self):
+        self.auto_cursor()
+
+    # =================================== main function ===================================
+    def auto_cursor(self):
+        print(f'Beeeeeep...zzZZzzZZZzzz...It\'s {self.now.strftime(r"%A, %Y-%m-%d %H:%M:%S")}\nI\'m your pc scout, automobility initiated until {self.stop_hr}:{self.stop_min:02}:00')
+        # Get a list of all connected monitors
+        monitors = get_monitors()
+
+        for monitor in monitors:
+            # print(f"Monitor <{monitor.name}>: Width: {monitor.width} pixels, Height: {monitor.height} pixels")
+            self.max_x+=monitor.width
+            self.min_y=min(self.min_y,monitor.height)
+
+
+        while self.flag:
+            # generate the next x,y, moving time, sleep time
+            x=randint(0,self.max_x-1)
+            y=randint(0,self.min_y-1)
+            duration=round(2*random(),2)
+            sleeping_time=randint(2,120)
+
+            print(f"Now moving cursor to <{x},{y}> and then will sleep for {sleeping_time}s")
+            # move cursor
+            pg.moveTo(x,y,duration=duration)
+            if sleeping_time>60:
+                pg.press(self.key)
+                print(f"Key <{self.key}> has been pressed!")
+
+            # hold off
+            sleep(sleeping_time)
+
+            # check if time's up
+            now_hr, now_min = datetime.now().hour, datetime.now().minute
+            if now_hr > self.stop_hr:
+                self.flag=False
+                print(f"It's {self.stop_hr}:{self.stop_min:02}:00! No one's watching anymore...")
+            if now_hr == self.stop_hr:
+                if now_min >= self.stop_min:
+                    self.flag=False
+                    print(f"It's {self.stop_hr}:{self.stop_min:02}:00! No one's watching anymore...")
+
     
 class MyMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('Auto mouse mover 1.0')
-        self.setGeometry(200,300,600,400)
+        self.setFixedSize(400,200)
 
         layout=QVBoxLayout()
+
+        about_menu=self.menuBar().addMenu('&About')
+        author_info = QAction('Author',self)
+        author_info.triggered.connect(self.show_about)
+        about_menu.addAction(author_info)
 
         end_time_label=QLabel('End time:')
         font=end_time_label.font()
@@ -129,14 +152,14 @@ class MyMainWindow(QMainWindow):
         key_row.addStretch()
 
         # functional buttons
-        run_btn=QPushButton('Run')
-        run_btn.clicked.connect(self.run)
+        self.run_btn=QPushButton('Run')
+        self.run_btn.clicked.connect(self.run_worker)
 
         stop_btn=QPushButton('Stop')
         stop_btn.clicked.connect(self.stop)
 
         btn_layout=QHBoxLayout()
-        btn_layout.addWidget(run_btn)
+        btn_layout.addWidget(self.run_btn)
         btn_layout.addWidget(stop_btn)
 
         container=QWidget()
@@ -146,15 +169,25 @@ class MyMainWindow(QMainWindow):
         container.setLayout(layout)
         self.setCentralWidget(container)
 
+        self.threadpool=QThreadPool()
+        print(f"Multi-threading initiated with maximum {self.threadpool.maxThreadCount()} threads")
 
-    def run(self,s):
+
+    def run_worker(self,s):
         flag=True
         key=self.key_combo.currentText()
         stop_hr, stop_min = self.end_time_hr.value(), self.end_time_min.value()
-        auto_cursor(stop_hr,stop_min,max_x,min_y,flag,now,key)
+        self.worker=Mover(stop_hr,stop_min,max_x,min_y,flag,now,key)
+        self.threadpool.start(self.worker)
+        self.run_btn.setEnabled(False)
     
     def stop(self,s):
-        flag=False
+        self.worker.flag=False
+        self.run_btn.setEnabled(True)
+        print('Automover was termianted manually. Time for some real work!')
+
+    def show_about(self):
+        QMessageBox.information(self,'About Auto Mouse Mover','Auto Mouse Mover was a tool developed by Ranco Xu in Sep 2023 from down under!\nAnyone who possesses a copy of this software is free to use, modify and redistribute it without obtaining my permission.\nHope you enjoy your WFH time:)')
 
 
 app=QApplication(sys.argv)
